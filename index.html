@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contador de Cofres de Fortnite - TikTok Studio & Moderador</title>
+  <!-- Google Fonts: Luckiest Guy & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=Luckiest+Guy&display=swap" rel="stylesheet">
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <!-- MQTT.js sobre WebSockets -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/mqtt/5.10.2/mqtt.min.js"></script>
+  <style>
+    @font-face {
+      font-family: 'FortniteGaming';
+      src: local('Burbank Big Condensed Black'), local('Burbank Big Condensed Bold'), local('Luckiest Guy');
+    }
+
+    body.overlay-mode {
+      background: transparent !important;
+      background-color: transparent !important;
+      overflow: hidden;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+    }
+
+    body.control-mode {
+      background-color: #0b0f19;
+      color: #f8fafc;
+      font-family: 'Inter', sans-serif;
+      min-height: 100vh;
+    }
+
+    .fortnite-text {
+      font-family: 'Burbank Big Condensed', 'Luckiest Guy', Impact, sans-serif;
+      color: #FFD700;
+      -webkit-text-stroke: 3.5px #000000;
+      paint-order: stroke fill;
+      text-shadow:
+        0px 4px 0px #000000,
+        -2px -2px 0px #000000,
+        2px -2px 0px #000000,
+        -2px 2px 0px #000000,
+        2px 2px 0px #000000,
+        0px 6px 14px rgba(0, 0, 0, 0.85);
+      letter-spacing: 0.04em;
+    }
+
+    .fortnite-number {
+      font-family: 'Burbank Big Condensed', 'Luckiest Guy', Impact, sans-serif;
+      color: #FFD700;
+      -webkit-text-stroke: 4.5px #000000;
+      paint-order: stroke fill;
+      text-shadow:
+        0px 5px 0px #000000,
+        -2px -2px 0px #000000,
+        2px -2px 0px #000000,
+        -2px 2px 0px #000000,
+        2px 2px 0px #000000,
+        0px 0px 22px rgba(255, 215, 0, 0.55),
+        0px 8px 18px rgba(0, 0, 0, 0.95);
+      letter-spacing: 0.03em;
+      display: inline-block;
+      transform-origin: center center;
+    }
+
+    @keyframes chestPopUp {
+      0% {
+        transform: scale(1);
+        filter: brightness(1) drop-shadow(0 0 0px rgba(255, 215, 0, 0));
+      }
+      35% {
+        transform: scale(1.38) rotate(-3deg);
+        color: #FFF9A6;
+        filter: brightness(1.45) drop-shadow(0 0 28px rgba(255, 215, 0, 0.95));
+      }
+      70% {
+        transform: scale(0.94) rotate(1deg);
+      }
+      100% {
+        transform: scale(1) rotate(0deg);
+        filter: brightness(1) drop-shadow(0 0 0px rgba(255, 215, 0, 0));
+      }
+    }
+
+    @keyframes chestIconBounce {
+      0% {
+        transform: scale(1) rotate(0deg);
+        filter: drop-shadow(0 6px 10px rgba(0,0,0,0.75));
+      }
+      40% {
+        transform: scale(1.22) rotate(-6deg);
+        filter: drop-shadow(0 0 25px rgba(255, 215, 0, 0.95)) brightness(1.25);
+      }
+      100% {
+        transform: scale(1) rotate(0deg);
+        filter: drop-shadow(0 6px 10px rgba(0,0,0,0.75));
+      }
+    }
+
+    .animate-chest-up {
+      animation: chestPopUp 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .animate-icon-up {
+      animation: chestIconBounce 0.55s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .chest-img-shadow {
+      filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.78));
+    }
+  </style>
+</head>
+<body class="control-mode">
+
+  <!-- Barra de alternancia de vista (oculta en TikTok Studio) -->
+  <div id="preview-switcher" class="fixed top-3 right-3 z-50 flex items-center gap-2 bg-slate-900/90 border border-slate-700/80 backdrop-blur-md px-3 py-1.5 rounded-full shadow-lg text-xs text-slate-300 transition-opacity duration-300">
+    <span class="font-semibold text-amber-400">Vista:</span>
+    <button id="btn-switch-control" type="button" class="px-2.5 py-1 rounded-full font-semibold transition-colors bg-amber-500 text-slate-950">
+      Moderador
+    </button>
+    <button id="btn-switch-overlay" type="button" class="px-2.5 py-1 rounded-full font-semibold transition-colors hover:bg-slate-800 text-slate-300">
+      Overlay (Stream)
+    </button>
+  </div>
+
+  <!-- ==========================================
+       VISTA 1: MODO OVERLAY (?mode=overlay)
+       ========================================== -->
+  <main id="overlay-view" class="hidden w-screen h-screen flex items-center justify-start px-6 py-4">
+    <div id="overlay-card" class="inline-flex items-center gap-4 px-4 py-2 rounded-2xl">
+      <!-- Icono del Cofre con fallback SVG automático -->
+      <div class="relative flex-shrink-0 w-24 h-24 sm:w-28 sm:h-28 flex items-center justify-center">
+        <img
+          id="overlay-chest-img"
+          src="https://static.wikia.nocookie.net/fortnite/images/3/3d/Chest_-_Container_-_Fortnite.png"
+          referrerpolicy="no-referrer"
+          alt="Cofre de Fortnite"
+          class="max-w-full h-auto w-24 sm:w-28 object-contain chest-img-shadow transition-transform"
+        />
+        <svg id="overlay-chest-fallback" class="hidden w-24 h-24 chest-img-shadow" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <rect x="14" y="45" width="92" height="55" rx="8" fill="#92400E" stroke="#000" stroke-width="5"/>
+          <path d="M12 48C12 30 28 20 60 20C92 20 108 30 108 48H12Z" fill="#D97706" stroke="#000" stroke-width="5"/>
+          <rect x="14" y="44" width="92" height="10" fill="#FBBF24" stroke="#000" stroke-width="4"/>
+          <rect x="50" y="38" width="20" height="24" rx="4" fill="#FDE047" stroke="#000" stroke-width="4"/>
+          <circle cx="60" cy="50" r="4" fill="#000"/>
+        </svg>
+      </div>
+
+      <!-- Texto "COFRES:" y Número Grande -->
+      <div class="flex items-baseline gap-3 sm:gap-4 select-none">
+        <span class="fortnite-text text-5xl sm:text-6xl tracking-wider uppercase leading-none">
+          COFRES:
+        </span>
+        <span id="overlay-counter-value" class="fortnite-number text-6xl sm:text-7xl leading-none">
+          0
+        </span>
+      </div>
+    </div>
+  </main>
+
+  <!-- ==========================================
+       VISTA 2: MODO MODERADOR (?mode=control)
+       ========================================== -->
+  <main id="control-view" class="max-w-xl mx-auto px-4 pt-10 pb-12 flex flex-col gap-5">
+    <!-- Encabezado y Estado de Sincronización en Tiempo Real -->
+    <header class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xl flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+      <div class="flex items-center gap-3.5">
+        <div class="w-12 h-12 rounded-xl bg-amber-500/15 border border-amber-500/40 flex items-center justify-center p-1.5 flex-shrink-0">
+          <img
+            id="control-chest-img"
+            src="https://static.wikia.nocookie.net/fortnite/images/3/3d/Chest_-_Container_-_Fortnite.png"
+            referrerpolicy="no-referrer"
+            alt="Cofre"
+            class="max-w-full h-auto object-contain"
+          />
+          <svg id="control-chest-fallback" class="hidden w-8 h-8" viewBox="0 0 120 120" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="14" y="45" width="92" height="55" rx="8" fill="#92400E" stroke="#000" stroke-width="5"/>
+            <path d="M12 48C12 30 28 20 60 20C92 20 108 30 108 48H12Z" fill="#D97706" stroke="#000" stroke-width="5"/>
+            <rect x="14" y="44" width="92" height="10" fill="#FBBF24" stroke="#000" stroke-width="4"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-lg sm:text-xl font-extrabold text-white tracking-tight flex items-center gap-2">
+            Panel de Control · Cofres
+          </h1>
+          <p class="text-xs text-slate-400">
+            Sincronización instantánea con TikTok Studio Overlay
+          </p>
+        </div>
+      </div>
+
+      <div class="flex items-center gap-2 self-start sm:self-center bg-slate-950 px-3 py-1.5 rounded-full border border-slate-800">
+        <span id="mqtt-status-dot" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse"></span>
+        <span id="mqtt-status-text" class="text-xs font-medium text-slate-300">Conectando...</span>
+      </div>
+    </header>
+
+    <!-- Contador Principal en Grande -->
+    <section class="bg-gradient-to-b from-slate-900 to-slate-950 border border-slate-800 rounded-3xl p-6 sm:p-8 text-center shadow-2xl relative overflow-hidden">
+      <div class="text-xs font-bold uppercase tracking-widest text-amber-400/90 mb-1">
+        Contador en Vivo (Stream)
+      </div>
+      <div class="my-2 flex items-center justify-center">
+        <span id="control-counter-value" class="fortnite-number text-7xl sm:text-8xl leading-none select-none">
+          0
+        </span>
+      </div>
+      <div id="last-action-toast" class="text-xs text-slate-400 h-4 transition-opacity">
+        Canal activo: <code id="topic-badge" class="text-amber-300 font-mono">fortnite-tiktok-cofres-8492a</code>
+      </div>
+    </section>
+
+    <!-- Botones de Acción Rápida para Moderador -->
+    <section class="grid grid-cols-1 gap-3.5">
+      <!-- Botón Gigante Verde: +1 Cofre -->
+      <button
+        id="btn-increment"
+        type="button"
+        class="w-full py-6 sm:py-7 px-6 rounded-2xl bg-emerald-500 hover:bg-emerald-400 active:scale-[0.98] text-slate-950 font-black text-2xl sm:text-3xl shadow-lg shadow-emerald-950/50 border-b-4 border-emerald-700 transition-all flex items-center justify-center gap-3 cursor-pointer select-none"
+      >
+        <span class="text-3xl sm:text-4xl leading-none">+1</span>
+        <span>COFRE ABIERTO</span>
+      </button>
+
+      <!-- Botón Amarillo: -1 (Corregir) -->
+      <button
+        id="btn-decrement"
+        type="button"
+        class="w-full py-4 px-5 rounded-2xl bg-amber-400 hover:bg-amber-300 active:scale-[0.98] text-slate-950 font-extrabold text-lg sm:text-xl shadow-md border-b-4 border-amber-600 transition-all flex items-center justify-center gap-2 cursor-pointer select-none"
+      >
+        <span>-1 (Corregir)</span>
+      </button>
+    </section>
+
+    <!-- Fijar Número Exacto Manualmente y Reiniciar a 0 -->
+    <section class="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+      <!-- Fijar número manual -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between gap-3">
+        <label for="manual-number-input" class="text-xs font-bold uppercase tracking-wider text-slate-400">
+          Fijar número exacto
+        </label>
+        <div class="flex items-center gap-2">
+          <input
+            id="manual-number-input"
+            type="number"
+            min="0"
+            max="99999"
+            placeholder="Ej. 25"
+            class="w-full bg-slate-950 border border-slate-700 focus:border-amber-400 focus:outline-none rounded-xl px-3.5 py-2.5 text-white font-bold text-base"
+          />
+          <button
+            id="btn-set-manual"
+            type="button"
+            class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm transition-colors flex-shrink-0 cursor-pointer"
+          >
+            Fijar
+          </button>
+        </div>
+      </div>
+
+      <!-- Reiniciar a 0 con confirmación en línea -->
+      <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 flex flex-col justify-between gap-3">
+        <span class="text-xs font-bold uppercase tracking-wider text-slate-400">
+          Nueva partida / Reset
+        </span>
+        <button
+          id="btn-reset-request"
+          type="button"
+          class="w-full py-2.5 px-4 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-bold text-sm sm:text-base transition-colors cursor-pointer"
+        >
+          Reiniciar a 0
+        </button>
+
+        <div id="reset-confirm-box" class="hidden flex items-center justify-between gap-2 bg-rose-950/60 border border-rose-700/70 rounded-xl px-3 py-2">
+          <span class="text-xs font-semibold text-rose-200">¿Reiniciar a 0?</span>
+          <div class="flex items-center gap-1.5">
+            <button
+              id="btn-reset-confirm"
+              type="button"
+              class="px-2.5 py-1 rounded-lg bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold cursor-pointer"
+            >
+              Sí, 0
+            </button>
+            <button
+              id="btn-reset-cancel"
+              type="button"
+              class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold cursor-pointer"
+            >
+              No
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configuración de Canal y Links Listos para Copiar -->
+    <section class="bg-slate-900/80 border border-slate-800 rounded-2xl p-4 sm:p-5 flex flex-col gap-3">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+        <div>
+          <h2 class="text-sm font-bold text-white">Canal de Sincronización & Enlaces</h2>
+          <p class="text-xs text-slate-400">
+            Comparte el enlace correspondiente con TikTok Studio y con el moderador.
+          </p>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <input
+            id="room-code-input"
+            type="text"
+            value="fortnite-tiktok-cofres-8492a"
+            aria-label="Código de canal MQTT"
+            class="bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs font-mono text-amber-300 w-48 focus:outline-none focus:border-amber-400"
+          />
+          <button
+            id="btn-Change-room"
+            type="button"
+            class="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200 cursor-pointer"
+          >
+            Cambiar
+          </button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+          <div class="truncate">
+            <div class="text-[11px] font-semibold text-amber-400">Enlace para TikTok Studio (Overlay)</div>
+            <code id="url-overlay-display" class="text-xs text-slate-300 font-mono">?mode=overlay</code>
+          </div>
+          <button
+            id="btn-copy-overlay"
+            type="button"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white flex-shrink-0 cursor-pointer"
+          >
+            Copiar
+          </button>
+        </div>
+
+        <div class="bg-slate-950 border border-slate-800 rounded-xl p-2.5 flex items-center justify-between gap-2">
+          <div class="truncate">
+            <div class="text-[11px] font-semibold text-emerald-400">Enlace para Moderadores (Control)</div>
+            <code id="url-control-display" class="text-xs text-slate-300 font-mono">?mode=control</code>
+          </div>
+          <button
+            id="btn-copy-control"
+            type="button"
+            class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-white flex-shrink-0 cursor-pointer"
+          >
+            Copiar
+          </button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      // 1. Parámetros de URL y configuración
+      var params = new URLSearchParams(window.location.search);
+      var initialMode = (params.get('mode') === 'overlay') ? 'overlay' : 'control';
+      var defaultRoom = params.get('room') || 'fortnite-tiktok-cofres-8492a';
+      var currentRoom = defaultRoom;
+      var currentTopic = 'tiktok_studio/fortnite_chests/v1/' + currentRoom;
+      var currentCount = 0;
+      var mqttClient = null;
+      var broadcastChannel = null;
+
+      // Lista de brokers MQTT WSS de alta disponibilidad
+      var BROKERS = [
+        'wss://broker.emqx.io:8084/mqtt',
+        'wss://broker.hivemq.com:8884/mqtt'
+      ];
+      var brokerIndex = 0;
+
+      // Elementos del DOM
+      var bodyEl = document.body;
+      var overlayView = document.getElementById('overlay-view');
+      var controlView = document.getElementById('control-view');
+      var previewSwitcher = document.getElementById('preview-switcher');
+      var btnSwitchControl = document.getElementById('btn-switch-control');
+      var btnSwitchOverlay = document.getElementById('btn-switch-overlay');
+
+      var overlayCounterEl = document.getElementById('overlay-counter-value');
+      var controlCounterEl = document.getElementById('control-counter-value');
+      var overlayChestImg = document.getElementById('overlay-chest-img');
+      var overlayChestFallback = document.getElementById('overlay-chest-fallback');
+      var controlChestImg = document.getElementById('control-chest-img');
+      var controlChestFallback = document.getElementById('control-chest-fallback');
+
+      var statusDot = document.getElementById('mqtt-status-dot');
+      var statusText = document.getElementById('mqtt-status-text');
+      var topicBadge = document.getElementById('topic-badge');
+
+      var btnIncrement = document.getElementById('btn-increment');
+      var btnDecrement = document.getElementById('btn-decrement');
+      var manualInput = document.getElementById('manual-number-input');
+      var btnSetManual = document.getElementById('btn-set-manual');
+
+      var btnResetRequest = document.getElementById('btn-reset-request');
+      var resetConfirmBox = document.getElementById('reset-confirm-box');
+      var btnResetConfirm = document.getElementById('btn-reset-confirm');
+      var btnResetCancel = document.getElementById('btn-reset-cancel');
+
+      var roomInput = document.getElementById('room-code-input');
+      var btnChangeRoom = document.getElementById('btn-Change-room');
+      var urlOverlayDisplay = document.getElementById('url-overlay-display');
+      var urlControlDisplay = document.getElementById('url-control-display');
+      var btnCopyOverlay = document.getElementById('btn-copy-overlay');
+      var btnCopyControl = document.getElementById('btn-copy-control');
+
+      // Respaldo de imágenes si falla la conexión externa
+      overlayChestImg.addEventListener('error', function () {
+        overlayChestImg.classList.add('hidden');
+        overlayChestFallback.classList.remove('hidden');
+      });
+      controlChestImg.addEventListener('error', function () {
+        controlChestImg.classList.add('hidden');
+        controlChestFallback.classList.remove('hidden');
+      });
+
+      // Feedback háptico en móviles
+      function triggerHaptic() {
+        if ('vibrate' in navigator) {
+          try { navigator.vibrate(25); } catch (e) {}
+        }
+      }
+
+      // Almacenamiento local de respaldo
+      function loadLocalCount() {
+        try {
+          var saved = localStorage.getItem('fn_chests_' + currentRoom);
+          if (saved !== null && !isNaN(parseInt(saved, 10))) {
+            currentCount = Math.max(0, parseInt(saved, 10));
+          }
+        } catch (e) {}
+      }
+
+      function saveLocalCount(val) {
+        try {
+          localStorage.setItem('fn_chests_' + currentRoom, String(val));
+        } catch (e) {}
+      }
+
+      function refreshShareLinks() {
+        var baseUrl = window.location.origin + window.location.pathname;
+        var roomSuffix = (currentRoom !== 'fortnite-tiktok-cofres-8492a') ? ('&room=' + encodeURIComponent(currentRoom)) : '';
+        urlOverlayDisplay.textContent = baseUrl + '?mode=overlay' + roomSuffix;
+        urlControlDisplay.textContent = baseUrl + '?mode=control' + roomSuffix;
+        topicBadge.textContent = currentRoom;
+        roomInput.value = currentRoom;
+      }
+
+      function setViewMode(mode) {
+        if (mode === 'overlay') {
+          bodyEl.classList.remove('control-mode');
+          bodyEl.classList.add('overlay-mode');
+          overlayView.classList.remove('hidden');
+          controlView.classList.add('hidden');
+
+          btnSwitchOverlay.className = 'px-2.5 py-1 rounded-full font-semibold transition-colors bg-amber-500 text-slate-950';
+          btnSwitchControl.className = 'px-2.5 py-1 rounded-full font-semibold transition-colors hover:bg-slate-800 text-slate-300';
+
+          if (params.get('mode') === 'overlay') {
+            previewSwitcher.classList.add('hidden');
+          }
+        } else {
+          bodyEl.classList.remove('overlay-mode');
+          bodyEl.classList.add('control-mode');
+          overlayView.classList.add('hidden');
+          controlView.classList.remove('hidden');
+
+          btnSwitchControl.className = 'px-2.5 py-1 rounded-full font-semibold transition-colors bg-amber-500 text-slate-950';
+          btnSwitchOverlay.className = 'px-2.5 py-1 rounded-full font-semibold transition-colors hover:bg-slate-800 text-slate-300';
+        }
+      }
+
+      function updateCounterUI(newCount, shouldAnimateUp) {
+        var cleanVal = Math.max(0, parseInt(newCount, 10) || 0);
+        var increased = shouldAnimateUp || (cleanVal > currentCount);
+        currentCount = cleanVal;
+        saveLocalCount(currentCount);
+
+        overlayCounterEl.textContent = String(currentCount);
+        controlCounterEl.textContent = String(currentCount);
+
+        if (increased) {
+          overlayCounterEl.classList.remove('animate-chest-up');
+          controlCounterEl.classList.remove('animate-chest-up');
+          overlayChestImg.classList.remove('animate-icon-up');
+          overlayChestFallback.classList.remove('animate-icon-up');
+
+          void overlayCounterEl.offsetWidth;
+          void controlCounterEl.offsetWidth;
+
+          overlayCounterEl.classList.add('animate-chest-up');
+          controlCounterEl.classList.add('animate-chest-up');
+          overlayChestImg.classList.add('animate-icon-up');
+          overlayChestFallback.classList.add('animate-icon-up');
+        }
+      }
+
+      function publishCount(nextValue, actionLabel) {
+        var cleanVal = Math.max(0, parseInt(nextValue, 10) || 0);
+        var isUp = cleanVal > currentCount;
+        updateCounterUI(cleanVal, isUp);
+        triggerHaptic();
+
+        var payload = JSON.stringify({
+          count: cleanVal,
+          action: actionLabel || 'update',
+          ts: Date.now()
+        });
+
+        if (mqttClient && mqttClient.connected) {
+          mqttClient.publish(currentTopic, payload, { qos: 0, retain: true });
+        }
+
+        if (broadcastChannel) {
+          try {
+            broadcastChannel.postMessage(payload);
+          } catch (e) {}
+        }
+      }
+
+      function connectMQTT() {
+        if (mqttClient) {
+          try { mqttClient.end(true); } catch (e) {}
+        }
+
+        currentTopic = 'tiktok_studio/fortnite_chests/v1/' + currentRoom;
+        statusDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+        statusText.textContent = 'Conectando...';
+
+        if (typeof window.mqtt === 'undefined') {
+          statusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+          statusText.textContent = 'Modo Local (Sin red)';
+          return;
+        }
+
+        var brokerUrl = BROKERS[brokerIndex];
+        var clientId = 'fn_chest_' + Math.random().toString(16).substring(2, 10);
+
+        mqttClient = window.mqtt.connect(brokerUrl, {
+          clientId: clientId,
+          clean: true,
+          connectTimeout: 7000,
+          reconnectPeriod: 3000
+        });
+
+        mqttClient.on('connect', function () {
+          statusDot.className = 'w-2.5 h-2.5 rounded-full bg-emerald-400';
+          statusText.textContent = 'En línea (Tiempo Real)';
+          mqttClient.subscribe(currentTopic, { qos: 0 });
+        });
+
+        mqttClient.on('message', function (topic, message) {
+          if (topic !== currentTopic) return;
+          try {
+            var data = JSON.parse(message.toString());
+            if (typeof data.count === 'number') {
+              updateCounterUI(data.count, data.count > currentCount);
+            }
+          } catch (e) {
+            var rawNum = parseInt(message.toString(), 10);
+            if (!isNaN(rawNum)) {
+              updateCounterUI(rawNum, rawNum > currentCount);
+            }
+          }
+        });
+
+        mqttClient.on('reconnect', function () {
+          statusDot.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse';
+          statusText.textContent = 'Reconectando...';
+        });
+
+        mqttClient.on('error', function () {
+          // Intentar el siguiente broker de respaldo si hay error
+          brokerIndex = (brokerIndex + 1) % BROKERS.length;
+          statusDot.className = 'w-2.5 h-2.5 rounded-full bg-rose-500';
+          statusText.textContent = 'Alternando broker...';
+        });
+      }
+
+      // Sincronización local en el mismo navegador
+      try {
+        if ('BroadcastChannel' in window) {
+          broadcastChannel = new BroadcastChannel('fn_chests_channel');
+          broadcastChannel.onmessage = function (ev) {
+            try {
+              var data = JSON.parse(ev.data);
+              if (typeof data.count === 'number') {
+                updateCounterUI(data.count, data.count > currentCount);
+              }
+            } catch (e) {}
+          };
+        }
+      } catch (e) {}
+
+      window.addEventListener('storage', function (ev) {
+        if (ev.key === 'fn_chests_' + currentRoom && ev.newValue !== null) {
+          var val = parseInt(ev.newValue, 10);
+          if (!isNaN(val)) {
+            updateCounterUI(val, val > currentCount);
+          }
+        }
+      });
+
+      // Eventos del panel
+      btnIncrement.addEventListener('click', function () {
+        publishCount(currentCount + 1, 'increment');
+      });
+
+      btnDecrement.addEventListener('click', function () {
+        publishCount(Math.max(0, currentCount - 1), 'decrement');
+      });
+
+      btnSetManual.addEventListener('click', function () {
+        var val = parseInt(manualInput.value, 10);
+        if (!isNaN(val) && val >= 0) {
+          publishCount(val, 'manual');
+          manualInput.value = '';
+        }
+      });
+
+      manualInput.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+          btnSetManual.click();
+        }
+      });
+
+      btnResetRequest.addEventListener('click', function () {
+        btnResetRequest.classList.add('hidden');
+        resetConfirmBox.classList.remove('hidden');
+      });
+
+      btnResetCancel.addEventListener('click', function () {
+        resetConfirmBox.classList.add('hidden');
+        btnResetRequest.classList.remove('hidden');
+      });
+
+      btnResetConfirm.addEventListener('click', function () {
+        publishCount(0, 'reset');
+        resetConfirmBox.classList.add('hidden');
+        btnResetRequest.classList.remove('hidden');
+      });
+
+      btnChangeRoom.addEventListener('click', function () {
+        var newRoom = (roomInput.value || '').trim().replace(/[^a-zA-Z0-9_-]/g, '');
+        if (newRoom) {
+          currentRoom = newRoom;
+          loadLocalCount();
+          updateCounterUI(currentCount, false);
+          refreshShareLinks();
+          connectMQTT();
+        }
+      });
+
+      function copyTextToClipboard(text, btnElement) {
+        var originalText = btnElement.textContent;
+        var tempInput = document.createElement('textarea');
+        tempInput.value = text;
+        document.body.appendChild(tempInput);
+        tempInput.select();
+        try {
+          document.execCommand('copy');
+          btnElement.textContent = '¡Copiado!';
+          setTimeout(function () {
+            btnElement.textContent = originalText;
+          }, 1600);
+        } catch (e) {}
+        document.body.removeChild(tempInput);
+      }
+
+      btnCopyOverlay.addEventListener('click', function () {
+        copyTextToClipboard(urlOverlayDisplay.textContent, btnCopyOverlay);
+      });
+
+      btnCopyControl.addEventListener('click', function () {
+        copyTextToClipboard(urlControlDisplay.textContent, btnCopyControl);
+      });
+
+      btnSwitchControl.addEventListener('click', function () {
+        setViewMode('control');
+      });
+
+      btnSwitchOverlay.addEventListener('click', function () {
+        setViewMode('overlay');
+      });
+
+      // Inicializar
+      loadLocalCount();
+      updateCounterUI(currentCount, false);
+      refreshShareLinks();
+      setViewMode(initialMode);
+      connectMQTT();
+    })();
+  </script>
+</body>
+</html>
